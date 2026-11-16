@@ -1,0 +1,15 @@
+services:
+  agentd:
+    build: .
+    env_file:
+      - .env          # 把 .env 里的变量注入容器环境
+    image: agentd:dev
+    ports:
+      - "8080:8080"
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    stop_grace_period: 10s
+    restart: unless-stopped

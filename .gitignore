@@ -1,0 +1,29 @@
+# --- secrets (never commit) ---
+key.txt
+.env
+.env.*
+!.env.example
+*secret*.txt
+
+# --- python ---
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.ruff_cache/
+.mypy_cache/
+.pytest_cache/
+
+# --- runtime data ---
+data/
+*.db
+*.sqlite3
+logs/
+
+# --- editor/os ---
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
