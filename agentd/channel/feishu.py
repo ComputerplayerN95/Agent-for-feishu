@@ -76,8 +76,10 @@ class FeishuChannel:
         self._handler = handler
         self._loop: asyncio.AbstractEventLoop | None = None
         self._ws: Any = None
+        self._sdk_loop: asyncio.AbstractEventLoop | None = None
         self._thread: threading.Thread | None = None
-        self._connected = False
+        self._started = threading.Event()
+        self._start_error: BaseException | None = None
         self._http = httpx.AsyncClient(
             base_url=settings.feishu_domain, timeout=httpx.Timeout(10.0)
         )
@@ -86,7 +88,8 @@ class FeishuChannel:
 
     @property
     def connected(self) -> bool:
-        return self._connected
+        # SDK 在握手成功后才会把 _conn 赋成 websocket 对象
+        return self._ws is not None and getattr(self._ws, "_conn", None) is not None
 
     def set_handler(self, handler: MessageHandler) -> None:
         self._handler = handler
@@ -95,47 +98,76 @@ class FeishuChannel:
     async def start(self) -> None:
         if not self._settings.feishu_configured:
             raise RuntimeError("AGENTD_FEISHU_APP_ID / AGENTD_FEISHU_APP_SECRET 未配置")
-        try:
-            import lark_oapi as lark
-        except ImportError as exc:  # pragma: no cover - 依赖缺失时给出人话
-            raise RuntimeError("缺少 lark-oapi 依赖，请先 uv sync") from exc
 
         self._loop = asyncio.get_running_loop()
-        dispatcher = (
-            lark.EventDispatcherHandler.builder("", "")
-            .register_p2_im_message_receive_v1(self._on_event)
-            .build()
-        )
-        self._ws = lark.ws.Client(
-            self._settings.feishu_app_id,
-            self._settings.app_secret,
-            event_handler=dispatcher,
-            log_level=lark.LogLevel.INFO,
-        )
         self._thread = threading.Thread(target=self._run, name="feishu-ws", daemon=True)
         self._thread.start()
+
+        ready = await asyncio.to_thread(self._started.wait, 15)
+        if self._start_error is not None:
+            raise RuntimeError(f"飞书长连接启动失败: {self._start_error}") from self._start_error
+        if not ready:  # pragma: no cover - 正常不会走到
+            log.warning("feishu long connection still starting after 15s")
         log.info("feishu long connection starting")
 
     def _run(self) -> None:
-        # start() 是阻塞的，跑在独立线程里；这只线程活着就认为链路在尝试维持
-        self._connected = True
+        """在工作线程里建 lark 客户端并阻塞跑长连接。
+
+        有个坑必须在这里 import：`lark_oapi/ws/client.py` 在**模块导入时**执行
+        `loop = asyncio.get_event_loop()`，把 loop 抓成模块级全局，之后
+        `Client.start()` 只用这个 loop 跑 run_until_complete。若在 uvicorn 的事件
+        循环里 import，抓到的就是那个正在运行的 loop，跨线程调用立刻报
+        "This event loop is already running"。在没有 running loop 的线程里首次
+        import，SDK 才会走 except 分支新建并持有自己的 loop。
+        """
         try:
-            self._ws.start()
+            import lark_oapi as lark
+
+            self._sdk_loop = asyncio.get_event_loop()
+            dispatcher = (
+                lark.EventDispatcherHandler.builder("", "")
+                .register_p2_im_message_receive_v1(self._on_event)
+                .build()
+            )
+            self._ws = lark.ws.Client(
+                self._settings.feishu_app_id,
+                self._settings.app_secret,
+                event_handler=dispatcher,
+                log_level=lark.LogLevel.INFO,
+            )
+        except BaseException as exc:  # pragma: no cover - 依赖缺失/凭证错误
+            self._start_error = exc
+            log.exception("failed to create feishu ws client")
+            self._started.set()
+            return
+        self._started.set()
+
+        try:
+            self._ws.start()  # 阻塞；内部自带重连
         except Exception:
             log.exception("feishu long connection crashed")
         finally:
-            self._connected = False
             log.info("feishu long connection stopped")
 
     async def stop(self) -> None:
-        if self._ws is not None:
-            try:
-                self._ws.stop()
-            except Exception:
-                log.warning("failed to stop feishu ws client", exc_info=True)
+        await asyncio.to_thread(self._close_ws)
         if self._thread is not None and self._thread.is_alive():
             await asyncio.to_thread(self._thread.join, 5)
         await self._http.aclose()
+
+    def _close_ws(self) -> None:
+        """SDK 这个版本没有 public stop()，只能关连接再停它自己的 loop。"""
+        ws, loop = self._ws, self._sdk_loop
+        if ws is None or loop is None:
+            return
+        try:
+            disconnect = getattr(ws, "_disconnect", None)
+            if disconnect is not None and loop.is_running():
+                asyncio.run_coroutine_threadsafe(disconnect(), loop).result(timeout=3)
+        except Exception:  # pragma: no cover - 关停尽力而为
+            log.debug("failed to close feishu ws connection", exc_info=True)
+        if loop.is_running():
+            loop.call_soon_threadsafe(loop.stop)
 
     # --- inbound ---------------------------------------------------
     def _on_event(self, data: Any) -> None:
