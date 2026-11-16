@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Annotated
 
 from pydantic import Field, field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -29,7 +30,8 @@ class Settings(BaseSettings):
     feishu_domain: str = "https://open.feishu.cn"
 
     # 空白名单 + dev = 放行；空白名单 + prod = 全拒
-    allowed_senders: list[str] = Field(default_factory=list)
+    # NoDecode: 环境变量按逗号分隔手写，不要 pydantic-settings 先按 JSON 解析
+    allowed_senders: Annotated[list[str], NoDecode] = Field(default_factory=list)
 
     db_path: Path = Path("data/agentd.db")
 

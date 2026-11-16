@@ -2,12 +2,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from fastapi.testclient import TestClient
-
 from agentd.app import create_app
 from agentd.channel.mock import MockChannel
 from agentd.config import Settings
 from agentd.runtime import Runtime
+from fastapi.testclient import TestClient
 
 
 def test_healthz_and_readyz(tmp_path: Path) -> None:
