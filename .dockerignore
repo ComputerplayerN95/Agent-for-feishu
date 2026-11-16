@@ -1,0 +1,29 @@
+# 密钥永不进镜像层：一旦 COPY 进某层，删掉也还在历史里
+key.txt
+.env
+.env.*
+*secret*.txt
+
+# 开发期产物
+.git/
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+*.egg-info/
+dist/
+build/
+
+# 运行时数据
+data/
+*.db
+*.sqlite3
+logs/
+
+# 测试与文档不需要进运行镜像
+tests/
+README.md
+docker-compose.yml
