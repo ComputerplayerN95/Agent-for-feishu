@@ -176,6 +176,14 @@ class FeishuChannel:
         except Exception:
             log.exception("failed to normalize feishu event")
             return
+        log.info(
+            "feishu event received event_id=%s chat_type=%s chat_id=%s sender=%s text=%r",
+            msg.event_id,
+            msg.chat_type,
+            msg.chat_id,
+            msg.sender_id,
+            msg.text[:60],
+        )
         if self._loop is None or self._handler is None:
             log.error("feishu event arrived before runtime is ready")
             return
@@ -188,6 +196,11 @@ class FeishuChannel:
         exc = future.exception()
         if exc is not None:
             log.error("message handler failed: %s", exc, exc_info=exc)
+            return
+        if future.result() is None:
+            log.info("event dropped (not allowed / duplicate / empty)")
+        else:
+            log.info("event handled, reply sent")
 
     # --- outbound --------------------------------------------------
     async def _access_token(self) -> str:
