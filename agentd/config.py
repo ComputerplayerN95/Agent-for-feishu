@@ -35,6 +35,20 @@ class Settings(BaseSettings):
 
     db_path: Path = Path("data/agentd.db")
 
+    # LLM：任何 OpenAI 兼容端点（DeepSeek 官方 / 通义 / 本地 vLLM ...）
+    llm_base_url: str = "https://api.deepseek.com/v1"
+    llm_api_key: str = ""
+    llm_api_key_file: Path | None = None
+    llm_model: str = "deepseek-chat"
+    llm_timeout: float = 60.0
+    llm_max_tokens: int = 1024
+    llm_temperature: float = 0.3
+    llm_history_turns: int = 8
+    llm_system_prompt: str = (
+        "你是一个部署在 Ubuntu 云服务器上的个人助手，通过飞书与用户单聊。"
+        "回答简洁，先给结论，再给可直接复制执行的命令；不确定就直说，不要编造。"
+    )
+
     @field_validator("allowed_senders", mode="before")
     @classmethod
     def _split_senders(cls, value: object) -> object:
@@ -50,8 +64,19 @@ class Settings(BaseSettings):
         return self.feishu_app_secret
 
     @property
+    def api_key(self) -> str:
+        """优先读 Secret 文件（k8s 挂载方式），其次读环境变量。"""
+        if self.llm_api_key_file is not None:
+            return self.llm_api_key_file.read_text(encoding="utf-8").strip()
+        return self.llm_api_key
+
+    @property
     def feishu_configured(self) -> bool:
         return bool(self.feishu_app_id and self.app_secret)
+
+    @property
+    def llm_configured(self) -> bool:
+        return bool(self.api_key)
 
     @property
     def allow_all_senders(self) -> bool:

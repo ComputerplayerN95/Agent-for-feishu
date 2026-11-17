@@ -6,9 +6,9 @@
 
 | 阶段 | 内容 | 状态 |
 |---|---|---|
-| M0 | 骨架：Channel 抽象 / Mock 通道 / 健康检查 / pytest | 进行中 |
-| M1 | 飞书长连接 echo | 待开始 |
-| M2 | 接 LLM、会话落库、event_id 去重 | 待开始 |
+| M0 | 骨架：Channel 抽象 / Mock 通道 / 健康检查 / pytest | ✅ 完成 |
+| M1 | 飞书长连接 echo | ✅ 完成（2026-11-17 真机闭环） |
+| M2 | 接 LLM、多轮上下文、长回复分片 | 🔄 进行中 |
 | M3 | 上 k3s | 待开始 |
 | M4 | CI/CD（Actions → ACR → Argo CD） | 待开始 |
 
@@ -45,8 +45,14 @@
 | `AGENTD_FEISHU_APP_ID` | — | 飞书自建应用 |
 | `AGENTD_FEISHU_APP_SECRET` | — | 或用 `AGENTD_FEISHU_APP_SECRET_FILE` |
 | `AGENTD_ALLOWED_SENDERS` | 空 | 逗号分隔的 open_id 白名单 |
-| `AGENTD_DB_URL` | `sqlite+aiosqlite:///./data/agentd.db` | prod 用 `postgresql+asyncpg://...` |
-| `AGENTD_LLM_BASE_URL` / `_API_KEY` / `_MODEL` | — | M2 启用 |
+| `AGENTD_DB_PATH` | `data/agentd.db` | 容器里要指到可写挂载点，如 `/data/agentd.db` |
+| `AGENTD_LLM_BASE_URL` | `https://api.deepseek.com/v1` | 任何 OpenAI 兼容端点 |
+| `AGENTD_LLM_API_KEY` | 空 | 或用 `AGENTD_LLM_API_KEY_FILE` |
+| `AGENTD_LLM_MODEL` | `deepseek-chat` | |
+| `AGENTD_LLM_TIMEOUT` | `60` | 秒 |
+| `AGENTD_LLM_MAX_TOKENS` | `1024` | |
+| `AGENTD_LLM_HISTORY_TURNS` | `8` | 带多少轮历史进上下文 |
+| `AGENTD_LLM_SYSTEM_PROMPT` | 见 `config.py` | |
 
 ## 设计决定（附理由）
 

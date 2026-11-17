@@ -112,3 +112,18 @@ class Store:
             return self._conn.execute(
                 "SELECT * FROM messages ORDER BY id DESC LIMIT ?", (limit,)
             ).fetchall()
+
+    def history(self, chat_id: str, turns: int = 8) -> list[sqlite3.Row]:
+        """取该会话最近 N 轮成功问答，按时间正序返回（最老的在最前）。"""
+        if turns <= 0:
+            return []
+        with self._lock:
+            if self._conn is None:
+                raise RuntimeError("store is not connected")
+            rows = self._conn.execute(
+                "SELECT text, reply FROM messages"
+                " WHERE chat_id = ? AND reply IS NOT NULL AND reply != ''"
+                " ORDER BY id DESC LIMIT ?",
+                (chat_id, turns),
+            ).fetchall()
+        return list(reversed(rows))

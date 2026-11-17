@@ -18,6 +18,7 @@ import httpx
 
 from ..config import Settings
 from ..models import IncomingMessage
+from ..textutil import split_text
 from .base import MessageHandler
 
 log = logging.getLogger(__name__)
@@ -224,7 +225,15 @@ class FeishuChannel:
         return self._token
 
     async def send_text(self, chat_id: str, text: str) -> None:
+        # 单条文本消息有长度上限，长回复拆成多条按顺序发，失败即中断
+        chunks = split_text(text)
         token = await self._access_token()
+        for index, chunk in enumerate(chunks, start=1):
+            await self._send_one(token, chat_id, chunk)
+        if len(chunks) > 1:
+            log.info("长回复已拆分发送 chat=%s chunks=%d", chat_id, len(chunks))
+
+    async def _send_one(self, token: str, chat_id: str, text: str) -> None:
         resp = await self._http.post(
             "/open-apis/im/v1/messages",
             params={"receive_id_type": "chat_id"},

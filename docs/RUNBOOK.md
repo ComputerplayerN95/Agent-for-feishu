@@ -59,10 +59,29 @@ AGENTD_HTTP_PORT=8080
 AGENTD_FEISHU_APP_ID=cli_aa70ca3100381bb4
 AGENTD_FEISHU_APP_SECRET=把key.txt里的secret粘这里
 AGENTD_DB_PATH=/root/agentd-data/agentd.db
+# M2 起启用；不填则回 echo（离线开发用）
+AGENTD_LLM_BASE_URL=https://api.deepseek.com/v1
+AGENTD_LLM_MODEL=deepseek-chat
+AGENTD_LLM_API_KEY=sk-你的key
 EOF
 
 chmod 600 .env
 ```
+
+**M2 之后的验收**：`.env` 里必须有 `AGENTD_LLM_API_KEY`，否则启动日志会打
+`未配置 AGENTD_LLM_API_KEY ... 回复将使用 echo`，机器人只会回你"收到：xxx"。
+
+单独验证 key（与飞书无关）：
+
+```bash
+set -a; . ./.env; set +a
+curl -s "$AGENTD_LLM_BASE_URL/chat/completions" \
+  -H "Authorization: Bearer $AGENTD_LLM_API_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"deepseek-chat","messages":[{"role":"user","content":"ping"}],"max_tokens":8}'
+```
+
+返回 `choices[0].message.content` 就说明 key 和网络都通。
 
 **验证点**：`git status --short` 里**看不到** `.env`（已在 `.gitignore`）。
 
@@ -188,9 +207,19 @@ journalctl -u agentd --no-pager | tail -20
 
 1. 事件与回调 → **订阅方式 = 使用长连接接收事件**（不是「发送至开发者服务器」）
 2. 事件列表里有 **`im.message.receive_v1`（接收消息）**
-3. 权限管理里 **`im:message`**（获取与发送单聊、群组消息）、**`im:message:send_as_bot`** 均已开通
+3. 权限管理里这三个都已开通：
+   - **`im:message.p2p_msg:readonly`**（读取用户发给机器人的单聊消息）← **实战踩过的坑**
+   - `im:message.group_at_msg:readonly`（接收群聊中 @ 机器人消息）
+   - `im:message:send_as_bot`（以机器人身份发消息）
 4. **版本管理与发布 → 创建版本 → 申请发布并通过**（改完事件/权限不发布新版本，一律不生效）
 5. 应用能力里有 **机器人**，且「可用范围」包含你自己
+
+> **2026-11-17 实战结论（M1 卡了整整一天的真凶）**：
+> 现象是「连接正常、ping/pong 正常、但事件日志空、探针只有 pong 没有任何 data 帧」。
+> 原因只有一条：**权限缺 `im:message.p2p_msg:readonly`**，只开了 `im:message:send_as_bot`。
+> 发消息的权限和收消息的权限是两套；只有"能发"的权限时，长连接照样能连，
+> 但服务端根本不会把消息事件推下来 —— 这种情况**不会报错**，只能靠权限页自己核对。
+> 排查时先查这一条，能省一天。
 
 **用 API 单独验证凭证（与长连接无关）**：
 

@@ -7,6 +7,7 @@ import logging
 
 from .channel.base import Channel
 from .config import Settings, stray_env_keys
+from .llm import LlmClient
 from .models import IncomingMessage
 from .service import AgentService
 from .store import Store
@@ -21,12 +22,29 @@ class Runtime:
         *,
         store: Store | None = None,
         channel: Channel | None = None,
+        llm: LlmClient | None = None,
     ) -> None:
         self.settings = settings
         self.store = store or Store(settings.db_path)
-        self.service = AgentService(settings, self.store)
+        self.llm = llm if llm is not None else self._build_llm()
+        self.service = AgentService(settings, self.store, self.llm)
         self.channel: Channel = channel or self._build_channel()
         self.channel.set_handler(self.dispatch)
+
+    def _build_llm(self) -> LlmClient | None:
+        if not self.settings.llm_configured:
+            log.warning(
+                "未配置 AGENTD_LLM_API_KEY（或 AGENTD_LLM_API_KEY_FILE），"
+                "回复将使用 echo，仅用于离线开发"
+            )
+            return None
+        log.info(
+            "LLM ready base_url=%s model=%s history_turns=%d",
+            self.settings.llm_base_url,
+            self.settings.llm_model,
+            self.settings.llm_history_turns,
+        )
+        return LlmClient(self.settings)
 
     def _build_channel(self) -> Channel:
         if self.settings.feishu_configured:
@@ -64,6 +82,8 @@ class Runtime:
 
     async def stop(self) -> None:
         await self.channel.stop()
+        if self.llm is not None:
+            await self.llm.aclose()
         await asyncio.to_thread(self.store.close)
         log.info("runtime stopped")
 
