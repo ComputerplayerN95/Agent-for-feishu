@@ -61,3 +61,24 @@ class Settings(BaseSettings):
         if sender_id in self.allowed_senders:
             return True
         return self.allow_all_senders
+
+
+def stray_env_keys(path: Path | str | None = None) -> list[str]:
+    """列出 .env 里没带 AGENTD_ 前缀的键。
+
+    踩过的坑：把 `.env` 写成 `Feishu_APP_ID=...`，pydantic-settings 按 `AGENTD_`
+    前缀去找，一个都读不到，于是静默降级成 mock 通道 —— 长连接压根没连。
+    """
+    p = Path(path or Settings.model_config.get("env_file", ".env"))
+    if not p.is_file():
+        return []
+    keys: list[str] = []
+    for line in p.read_text(encoding="utf-8", errors="replace").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, _value = line.partition("=")
+        key = key.strip()
+        if key and not key.startswith("AGENTD_"):
+            keys.append(key)
+    return keys

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from agentd.config import Settings
+from agentd.config import Settings, stray_env_keys
 
 
 def test_allowed_senders_parsed_from_comma_string(monkeypatch) -> None:
@@ -39,3 +39,16 @@ def test_whitelist_wins_in_prod() -> None:
     settings = Settings(env="prod", allowed_senders=["ou_me"])
     assert settings.is_allowed("ou_me") is True
     assert settings.is_allowed("ou_other") is False
+
+
+def test_stray_env_keys_flags_missing_prefix(tmp_path: Path) -> None:
+    env = tmp_path / ".env"
+    env.write_text(
+        "# comment\n\nAGENTD_FEISHU_APP_ID=cli_ok\nFeishu_APP_SECRET=oops\nDEEPSEEK_API=0\n",
+        encoding="utf-8",
+    )
+    assert stray_env_keys(env) == ["Feishu_APP_SECRET", "DEEPSEEK_API"]
+
+
+def test_stray_env_keys_missing_file() -> None:
+    assert stray_env_keys("/nonexistent/.env") == []

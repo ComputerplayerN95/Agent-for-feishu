@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from agentd.channel.mock import MockChannel
 from agentd.config import Settings
 from agentd.models import IncomingMessage
@@ -31,6 +33,18 @@ async def test_runtime_reports_not_ready_before_start(tmp_path: Path) -> None:
     assert info["ready"] is False
     assert "db" in info["not_ready"]
     assert "mock" in info["not_ready"]
+
+
+def test_prod_without_feishu_creds_fails_fast(tmp_path: Path) -> None:
+    settings = Settings(
+        env="prod",
+        db_path=tmp_path / "prod.db",
+        feishu_app_id="",
+        feishu_app_secret="",
+        feishu_app_secret_file=None,
+    )
+    with pytest.raises(RuntimeError, match="飞书凭证未配置"):
+        Runtime(settings)
 
 
 async def test_feishu_incoming_mapping() -> None:

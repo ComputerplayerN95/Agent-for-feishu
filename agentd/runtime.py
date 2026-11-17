@@ -6,7 +6,7 @@ import asyncio
 import logging
 
 from .channel.base import Channel
-from .config import Settings
+from .config import Settings, stray_env_keys
 from .models import IncomingMessage
 from .service import AgentService
 from .store import Store
@@ -33,9 +33,21 @@ class Runtime:
             from .channel.feishu import FeishuChannel
 
             return FeishuChannel(self.settings)  # type: ignore[return-value]
+
+        stray = stray_env_keys()
+        hint = f"；.env 里这些键没有 AGENTD_ 前缀，读不到: {stray}" if stray else ""
+        message = (
+            "飞书凭证未配置，已降级为 mock 通道（消息不会真的发到飞书）。"
+            "请确认环境变量名是 AGENTD_FEISHU_APP_ID / AGENTD_FEISHU_APP_SECRET"
+            f"（或 AGENTD_FEISHU_APP_SECRET_FILE）；当前 app_id={self.settings.feishu_app_id!r}"
+            f" secret_len={len(self.settings.app_secret or '')}{hint}"
+        )
+        if self.settings.env == "prod":
+            raise RuntimeError(message)
+        log.error(message)
+
         from .channel.mock import MockChannel
 
-        log.warning("飞书凭证未配置，降级为 mock 通道")
         return MockChannel()  # type: ignore[return-value]
 
     async def dispatch(self, msg: IncomingMessage) -> str | None:
